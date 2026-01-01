@@ -24,90 +24,100 @@
     </div>
 
     <script>
-        // Configurações
         const API_KEY = "54d522ccd4msh0f4dec56b15afa7p14a261jsn69499ae84eea";
         const API_HOST = "api-football-v1.p.rapidapi.com";
 
-        // Relógio em tempo real
         setInterval(() => {
             document.getElementById('relogio').innerText = new Date().toLocaleTimeString('pt-BR');
         }, 1000);
 
         async function getMatches() {
-            // CORREÇÃO DE DATA: Força o formato YYYY-MM-DD do dia atual no Brasil
-            const agora = new Date();
-            const year = agora.getFullYear();
-            const month = String(agora.getMonth() + 1).padStart(2, '0');
-            const day = String(agora.getDate()).padStart(2, '0');
-            const dataHoje = `${year}-${month}-${day}`;
-
             const statusDiv = document.getElementById('status');
             const container = document.getElementById('match-container');
             
             try {
-                const response = await fetch(`https://${API_HOST}/v3/fixtures?date=${dataHoje}`, {
+                // Tenta buscar jogos AO VIVO primeiro
+                let response = await fetch(`https://${API_HOST}/v3/fixtures?live=all`, {
                     method: "GET",
-                    headers: {
-                        "x-rapidapi-host": API_HOST,
-                        "x-rapidapi-key": API_KEY
-                    }
+                    headers: { "x-rapidapi-host": API_HOST, "x-rapidapi-key": API_KEY }
                 });
 
-                const data = await response.json();
-                container.innerHTML = '';
+                let data = await response.json();
 
+                // Se não houver nada ao vivo, busca a grade do dia (Brasil)
                 if (!data.response || data.response.length === 0) {
-                    statusDiv.innerText = `Nenhum jogo encontrado para a data: ${dataHoje}`;
-                    statusDiv.classList.remove('animate-pulse');
-                    return;
+                    const agora = new Date();
+                    const dataHoje = agora.getFullYear() + "-" + 
+                                   String(agora.getMonth() + 1).padStart(2, '0') + "-" + 
+                                   String(agora.getDate()).padStart(2, '0');
+                    
+                    response = await fetch(`https://${API_HOST}/v3/fixtures?date=${dataHoje}`, {
+                        method: "GET",
+                        headers: { "x-rapidapi-host": API_HOST, "x-rapidapi-key": API_KEY }
+                    });
+                    data = await response.json();
                 }
 
-                statusDiv.innerText = `${data.response.length} JOGOS ENCONTRADOS HOJE (${day}/${month})`;
-                statusDiv.classList.remove('animate-pulse', 'bg-blue-800/30');
-                statusDiv.classList.add('bg-emerald-600', 'text-white');
-
-                // Mostrar os jogos
-                data.response.slice(0, 60).forEach(match => {
-                    const card = document.createElement('div');
-                    card.className = "bg-slate-800 p-5 rounded-2xl shadow-2xl border border-slate-700 hover:border-blue-500 transition-all";
-                    
-                    const hora = match.fixture.date.split('T')[1].substring(0,5);
-                    
-                    card.innerHTML = `
-                        <div class="flex justify-between text-[10px] font-bold text-slate-400 mb-3 border-b border-slate-700 pb-2 uppercase tracking-widest">
-                            <span>${match.league.name}</span>
-                            <span class="text-blue-400 text-sm">${hora}</span>
-                        </div>
-                        
-                        <div class="flex justify-between items-center mb-6">
-                            <div class="text-center w-[45%]">
-                                <img src="${match.teams.home.logo}" class="w-10 h-10 mx-auto mb-2 object-contain">
-                                <p class="text-[11px] font-black leading-tight uppercase">${match.teams.home.name}</p>
-                            </div>
-                            <div class="font-black text-slate-600 text-lg italic italic">VS</div>
-                            <div class="text-center w-[45%]">
-                                <img src="${match.teams.away.logo}" class="w-10 h-10 mx-auto mb-2 object-contain">
-                                <p class="text-[11px] font-black leading-tight uppercase">${match.teams.away.name}</p>
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div class="bg-emerald-900/40 p-2 rounded border border-emerald-500/30 flex justify-between items-center">
-                                <div>
-                                    <p class="text-[9px] text-emerald-400 uppercase font-black tracking-tighter">Sugestão UnderON</p>
-                                    <p class="text-xs font-black text-emerald-100 italic font-mono uppercase">Menos de 4.5 Gols</p>
-                                </div>
-                                <div class="bg-emerald-500 text-emerald-900 text-[10px] font-black px-2 py-1 rounded">SEGURO</div>
-                            </div>
-                        </div>
-                    `;
-                    container.appendChild(card);
-                });
+                renderMatches(data.response);
 
             } catch (error) {
-                statusDiv.innerText = "Erro de conexão. Verifique sua cota de 100 acessos.";
+                statusDiv.innerText = "Erro de conexão ou limite de cota atingido.";
                 console.error(error);
             }
+        }
+
+        function renderMatches(jogos) {
+            const statusDiv = document.getElementById('status');
+            const container = document.getElementById('match-container');
+            container.innerHTML = '';
+
+            if (!jogos || jogos.length === 0) {
+                statusDiv.innerText = "Nenhum jogo disponível na API no momento.";
+                statusDiv.classList.remove('animate-pulse');
+                return;
+            }
+
+            statusDiv.innerText = `${jogos.length} JOGOS MONITORADOS PARA UNDER`;
+            statusDiv.classList.remove('animate-pulse', 'bg-blue-800/30');
+            statusDiv.classList.add('bg-emerald-600', 'text-white');
+
+            jogos.slice(0, 50).forEach(match => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-800 p-5 rounded-2xl shadow-2xl border border-slate-700 hover:border-blue-500 transition-all";
+                
+                const hora = match.fixture.date.split('T')[1].substring(0,5);
+                const statusJogo = match.fixture.status.short === '1H' || match.fixture.status.short === '2H' ? 'AO VIVO' : hora;
+                
+                card.innerHTML = `
+                    <div class="flex justify-between text-[10px] font-bold text-slate-400 mb-3 border-b border-slate-700 pb-2 uppercase tracking-widest">
+                        <span>${match.league.name}</span>
+                        <span class="${statusJogo === 'AO VIVO' ? 'text-red-500 animate-pulse' : 'text-blue-400'} text-sm">${statusJogo}</span>
+                    </div>
+                    
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="text-center w-[45%]">
+                            <img src="${match.teams.home.logo}" class="w-10 h-10 mx-auto mb-2 object-contain">
+                            <p class="text-[11px] font-black leading-tight uppercase">${match.teams.home.name}</p>
+                            <span class="text-lg font-bold">${match.goals.home ?? 0}</span>
+                        </div>
+                        <div class="font-black text-slate-600 text-lg italic">VS</div>
+                        <div class="text-center w-[45%]">
+                            <img src="${match.teams.away.logo}" class="w-10 h-10 mx-auto mb-2 object-contain">
+                            <p class="text-[11px] font-black leading-tight uppercase">${match.teams.away.name}</p>
+                            <span class="text-lg font-bold">${match.goals.away ?? 0}</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-emerald-900/40 p-2 rounded border border-emerald-500/30 flex justify-between items-center">
+                        <div>
+                            <p class="text-[9px] text-emerald-400 uppercase font-black tracking-tighter">Sugestão UnderON</p>
+                            <p class="text-xs font-black text-emerald-100 italic font-mono uppercase">Menos de 4.5 Gols</p>
+                        </div>
+                        <div class="bg-emerald-500 text-emerald-900 text-[10px] font-black px-2 py-1 rounded">SEGURO</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
         }
 
         getMatches();
